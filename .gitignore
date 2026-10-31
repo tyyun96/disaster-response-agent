@@ -1,0 +1,29 @@
+# 비밀 키
+.env
+.env.*
+!.env.example
+
+# 가상환경
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 실행 시 생성되는 데이터
+data/chroma_db/
+outputs/
+*.sqlite
+*.sqlite3
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
