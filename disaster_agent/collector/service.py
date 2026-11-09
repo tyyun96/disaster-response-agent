@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -11,9 +12,13 @@ from disaster_agent.state import GraphState
 
 DEFAULT_COLLECTION_QUESTION = "지정된 위치의 화재/재난 정보를 수집하고 보고서를 작성해줘"
 
+# 보고서 마크다운 기호 (줄 앞 제목 #, 굵게 **, __, 코드 `)
+_MARKDOWN_PATTERN = re.compile(r"(?m)^\s*#{1,6}\s*|\*\*|__|`")
 
-def _trim_text(value: str, max_chars: int) -> str:
-    normalized = " ".join(value.split())
+
+def summarize_report(value: str, max_chars: int) -> str:
+    """마크다운 보고서를 마크다운 기호 없는 한 줄 요약으로 줄입니다."""
+    normalized = " ".join(_MARKDOWN_PATTERN.sub("", value).split())
     if len(normalized) <= max_chars:
         return normalized
     return normalized[: max_chars - 3] + "..."
@@ -94,11 +99,11 @@ def build_collection_text(result: Dict[str, Any], max_section_chars: int = 280) 
             lines.append(f"  - {error}")
 
     lines.append("[NEWS]")
-    lines.append(_trim_text(reports.get("news") or "수집 결과 없음", max_section_chars))
+    lines.append(summarize_report(reports.get("news") or "수집 결과 없음", max_section_chars))
     lines.append("[SNS]")
-    lines.append(_trim_text(reports.get("sns") or "수집 결과 없음", max_section_chars))
+    lines.append(summarize_report(reports.get("sns") or "수집 결과 없음", max_section_chars))
     lines.append("[DISASTER]")
-    lines.append(_trim_text(reports.get("disaster") or "수집 결과 없음", max_section_chars))
+    lines.append(summarize_report(reports.get("disaster") or "수집 결과 없음", max_section_chars))
 
     return "\n".join(lines)
 

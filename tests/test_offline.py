@@ -12,7 +12,7 @@ from disaster_agent.alert_monitor.subscribers import (
     save_subscribers,
 )
 from disaster_agent.collector import incidents as collector_incidents
-from disaster_agent.collector.service import build_collection_text
+from disaster_agent.collector.service import build_collection_text, summarize_report
 from disaster_agent.geo import guess_city_seed, haversine_km
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "disaster_agent" / "mcp_servers"))
@@ -62,6 +62,27 @@ def test_build_collection_text():
     assert "[DISASTER]\n수집 결과 없음" in text
 
 
+def test_summarize_report_strips_markdown():
+    report = "### 화재 뉴스 분석 보고서\n\n#### 1. 개요\n- **노원구** 화재 `확인`"
+    assert summarize_report(report, 200) == "화재 뉴스 분석 보고서 1. 개요 - 노원구 화재 확인"
+    assert summarize_report("가" * 20, 10) == "가" * 7 + "..."
+
+
+def test_streamlit_collection_markdown():
+    from disaster_agent.apps.streamlit_app import collection_markdown
+
+    text = collection_markdown(
+        {
+            "metadata": {"location": "대전 중구", "incident_count": 1},
+            "reports": {"news": "# 보고서\n요금 $5"},
+            "errors": [],
+        }
+    )
+    assert text.startswith("**[수집 완료]** 대전 중구 · 기준 시점: 현재 · 탐지된 사건 1건")
+    assert "**📰 NEWS** · 보고서 요금 \\$5" in text
+    assert "**💬 SNS** · 수집 결과 없음" in text
+
+
 def test_monitor_alert_rules():
     assert monitor.should_alert("서울 화재 발생, 주민 대피")
     assert not monitor.should_alert("화재 대피 관련 특이사항 없음")
@@ -71,6 +92,9 @@ def test_monitor_alert_rules():
 
     message = monitor.build_notification_message(incident)
     assert "발생 판단 출처: NEWS" in message
+
+    incident.evidence = ["안영동에서 산불 진화 중 [DISASTER]", "[NEWS] 주민 대피"]
+    assert "발생 판단 출처: DISASTER, NEWS" in monitor.build_notification_message(incident)
 
     near = Subscriber("u1", 37.5663, 126.9019, radius_km=3.0)
     far = Subscriber("u2", 35.1796, 129.0756, radius_km=3.0)

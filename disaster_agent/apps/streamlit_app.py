@@ -11,11 +11,51 @@ import uuid
 import streamlit as st
 
 from disaster_agent.collector.incidents import run_collection_flow
-from disaster_agent.collector.service import build_collection_text
+from disaster_agent.collector.service import summarize_report
 from disaster_agent.kpas.workflow import DEFAULT_KPAS_QUESTION, run_kpas_workflow
 
 KPAS_MODE = "KPAS 재난문자 초안"
 COLLECT_MODE = "재난 정보 수집 (JSON)"
+REPORT_LABELS = (("news", "📰 NEWS"), ("sns", "💬 SNS"), ("disaster", "🏛️ DISASTER"))
+
+
+def collection_markdown(result: dict) -> str:
+    """수집 결과를 출처별 문단으로 요약합니다."""
+    metadata = result.get("metadata", {})
+    reports = result.get("reports", {})
+    parts = [
+        f"**[수집 완료]** {metadata.get('location', '미지정')} · 기준 시점: {metadata.get('scenario_time') or '현재'}"
+        f" · 탐지된 사건 {metadata.get('incident_count', 0)}건"
+    ]
+    parts += [f"⚠️ {error}" for error in result.get("errors", [])]
+    for key, label in REPORT_LABELS:
+        parts.append(f"**{label}** · {summarize_report(reports.get(key) or '수집 결과 없음', 350)}")
+    # Streamlit 마크다운에서 $는 수식으로 해석되므로 이스케이프
+    return "\n\n".join(parts).replace("$", "\\$")
+
+
+def render_collection_details(result: dict) -> None:
+    """탐지된 사건 표와 전체 JSON을 보여줍니다."""
+    incidents = result.get("incidents", [])
+    if incidents:
+        st.dataframe(
+            [
+                {
+                    "유형": incident.get("incident_type"),
+                    "위치": incident.get("location_text"),
+                    "출처": incident.get("source"),
+                    "신뢰도": incident.get("confidence"),
+                    "위도": incident.get("latitude"),
+                    "경도": incident.get("longitude"),
+                    "요약": incident.get("summary"),
+                }
+                for incident in incidents
+            ],
+            hide_index=True,
+        )
+    with st.expander("전체 수집 결과 JSON"):
+        st.code(json.dumps(result, ensure_ascii=False, indent=2), language="json")
+
 
 st.set_page_config(
     page_title="재난 대응 AI 에이전트",
@@ -59,7 +99,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message.get("json"):
-            st.code(json.dumps(message["json"], ensure_ascii=False, indent=2), language="json")
+            render_collection_details(message["json"])
 
 if prompt := st.chat_input("분석할 지역을 입력하세요 (예: 강남역, 부산 해운대구)"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -87,12 +127,12 @@ if prompt := st.chat_input("분석할 지역을 입력하세요 (예: 강남역,
                             thread_id=st.session_state.thread_id,
                         )
                     )
-                    response_text = build_collection_text(result, max_section_chars=350)
+                    response_text = collection_markdown(result)
             except Exception as exc:
                 response_text = f"❌ 처리 중 오류가 발생했습니다: {exc}"
 
         st.markdown(response_text)
         if result is not None:
-            st.code(json.dumps(result, ensure_ascii=False, indent=2), language="json")
+            render_collection_details(result)
 
     st.session_state.messages.append({"role": "assistant", "content": response_text, "json": result})

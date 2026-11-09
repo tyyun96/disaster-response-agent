@@ -683,7 +683,10 @@ async def extract_personalized_action_guide(
     try:
         structured_llm = get_llm().with_structured_output(ActionGuideExtraction)
         parsed = await structured_llm.ainvoke(prompt)
-        guides = [g.strip() for g in parsed.guides if g.strip()][:DEFAULT_RESPONSE_GUIDE_LIMIT]
+        # "1. ..." 처럼 LLM이 붙인 번호는 알림 메시지의 "대응 요령 N"과 겹치므로 제거
+        guides = [
+            re.sub(r"^\d+[.)]\s*", "", g.strip()) for g in parsed.guides if g.strip()
+        ][:DEFAULT_RESPONSE_GUIDE_LIMIT]
 
         if guides:
             if rag_context:
@@ -775,13 +778,9 @@ def build_notification_message(incident: Incident) -> str:
         evidence_block = "- 분석 근거: (근거 문장 추출 실패)"
     else:
         evidence_block = "\n".join([f"- 분석 근거 {idx + 1}: {line}" for idx, line in enumerate(evidence_lines)])
+    # LLM이 출처 태그를 문장 앞이나 뒤에 붙이므로 위치와 상관없이 찾음
     evidence_sources = sorted(
-        {
-            match.group(1)
-            for line in evidence_lines
-            for match in [re.match(r"^\[([A-Z]+)\]", line.strip())]
-            if match
-        }
+        {source for line in evidence_lines for source in re.findall(r"\[(NEWS|SNS|DISASTER|FINAL)\]", line)}
     )
     evidence_source_text = ", ".join(evidence_sources) if evidence_sources else "출처 식별 실패"
 
